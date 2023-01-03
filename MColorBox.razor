@@ -1,0 +1,49 @@
+﻿@using Microsoft.JSInterop
+
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<div @ref="mColorBoxElement"></div>
+
+@code {
+    private ElementReference mColorBoxElement;
+    private DotNetObjectReference<MColorBox>? dotNetHelper;
+    private IJSObjectReference? mColorBoxModule;
+    private IJSObjectReference? mColorBox;
+
+    [Parameter]
+    public string? Value { get; set; }
+    [Parameter]
+    public bool ReadOnly { get; set; }
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            dotNetHelper = DotNetObjectReference.Create(this);
+            mColorBoxModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/MColorBoxRazorComponent/mColorBoxModule.js");
+            mColorBox = await mColorBoxModule.InvokeAsync<IJSObjectReference>("addColorBox", mColorBoxElement, Value, ReadOnly, dotNetHelper, System.Globalization.CultureInfo.CurrentCulture.TwoLetterISOLanguageName == "fa");
+        }
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        try
+        {
+            if (mColorBoxModule is not null) await mColorBoxModule.InvokeVoidAsync("dispose", mColorBoxElement);
+        }
+        catch (Exception ex) when (ex.GetType().Name == "JSDisconnectedException")
+        {
+            //https://github.com/dotnet/aspnetcore/issues/33336#issuecomment-862425579
+        }
+
+        if (mColorBox is not null) await mColorBox.DisposeAsync();
+        if (mColorBoxModule is not null) await mColorBoxModule.DisposeAsync();
+        dotNetHelper?.Dispose();
+    }
+    
+    [JSInvokable]
+    public async Task OnValueChanged(string key) => await ValueChanged.InvokeAsync(key);
+}
